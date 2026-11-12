@@ -17,15 +17,11 @@ Projects, posts, social links, and most site content remain static.
 
 ## Provider Decision
 
-Do not implement a production guestbook until the deployment target and persistence provider are chosen.
+The static frontend deploys to Cloudflare Pages. Supabase Auth and narrowly granted PostgreSQL RPC functions provide guestbook persistence; no custom API server is required.
 
-Allowed shapes:
+Public approved-message reads use the `anon` role through `get_guestbook_entries()`. Writes require an authenticated session, and new anonymous sessions require Cloudflare Turnstile verification. Direct table access remains revoked.
 
-1. Serverless functions plus a managed database.
-2. A small standalone API.
-3. A browser-safe database REST interface with strict row-level rules.
-
-Do not expose service-role or administrative keys to the frontend.
+Do not expose service-role, administrative, or Turnstile secret keys to the frontend.
 
 ## Suggested API
 
@@ -138,12 +134,11 @@ Reject:
 
 ## Anonymous Visitor Identity
 
-- Frontend creates a random visitor identifier once.
-- Store it locally.
-- Send it over HTTPS.
-- Backend hashes it before persistence.
-- Use the hash for like deduplication and abuse controls.
-- Do not display IP addresses or hashes.
+- Public reads do not require an Auth user or create an anonymous identity.
+- Supabase creates an anonymous Auth identity only after a write supplies a valid Turnstile token.
+- Existing sessions are reused for later writes and like deduplication.
+- Anonymous identities skip owner verification; only non-anonymous sessions call the owner RPC.
+- Store only the Supabase Auth user ID needed for rate limiting and likes; do not store visitor IP addresses.
 
 ## Publication And Deletion
 

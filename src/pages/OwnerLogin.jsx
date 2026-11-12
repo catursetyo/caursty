@@ -7,11 +7,14 @@ import {
   requestOwnerMagicLink,
   signOutOwner,
 } from '../lib/guestbookApi';
+import TurnstileChallenge from '../components/ui/TurnstileChallenge';
 
 export default function OwnerLogin({ onNavigate }) {
   const [email, setEmail] = useState('');
   const [access, setAccess] = useState({ isOwner: false, session: null });
   const [status, setStatus] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
   useEffect(() => {
@@ -46,11 +49,13 @@ export default function OwnerLogin({ onNavigate }) {
     setStatus('');
 
     try {
-      await requestOwnerMagicLink(email.trim());
+      await requestOwnerMagicLink(email.trim(), captchaToken);
       setStatus('Check your email to finish signing in.');
     } catch {
       setStatus('The sign-in link could not be sent.');
     } finally {
+      setCaptchaToken('');
+      setCaptchaReset((value) => value + 1);
       setLoading(false);
     }
   }
@@ -98,7 +103,8 @@ export default function OwnerLogin({ onNavigate }) {
             <span>Owner email</span>
             <input type="email" autoComplete="email" value={email} required onChange={(event) => setEmail(event.target.value)} />
           </label>
-          <button className="command-button" type="submit">
+          <TurnstileChallenge onVerify={setCaptchaToken} resetKey={captchaReset} />
+          <button className="command-button" type="submit" disabled={loading || !captchaToken}>
             send magic link <LogIn aria-hidden="true" />
           </button>
           {access.session && (

@@ -15,6 +15,7 @@ Use Cloudflare Pages. Build `main` with `npm run build`, publish `dist/`, and us
 - Deployment configuration lives in Cloudflare rather than a repository workflow.
 - `caursty.dev` and `www.caursty.dev` are managed through Cloudflare DNS.
 - No host-specific fallback file or deployment dependency is required in the repository.
+- Automated-crawler filtering and Turnstile widgets are configured in the Cloudflare dashboard; their server-side secrets never enter the Vite build.
 
 ## Revisit When
 

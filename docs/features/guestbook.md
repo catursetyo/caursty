@@ -19,6 +19,10 @@ A public guestbook is production-ready only when it has:
 
 Supabase is the selected production provider. `localStorage` exists only in Vite development mode; production shows an unavailable state when Supabase is not configured.
 
+Public message reads use the `anon` role through `get_guestbook_entries()` and do not create an Auth user. That function returns approved rows only when no user session exists; all write and owner functions remain restricted to `authenticated`. Owner verification failure degrades the page to read-only rather than hiding successfully loaded messages.
+
+The embedded guestbook loads only when it approaches the viewport. Anonymous Auth users are created only after a visitor submits a write with a valid Turnstile token. Existing sessions do not need another token for later writes. Anonymous sessions skip the unnecessary owner RPC.
+
 ## Message Rules
 
 - Name: required, 2–40 characters.
@@ -111,13 +115,29 @@ The owner email currently lives in the migration as a deliberate single-owner ru
 
 ## Supabase Setup
 
-1. Create a Supabase project and run `supabase/migrations/202607120001_guestbook.sql`.
-2. Enable anonymous sign-ins and configure CAPTCHA for production traffic.
-3. Create the owner Auth user for `catursetyo26@gmail.com` before requesting a magic link.
-4. Add the deployed `/owner/login` URL to the allowed Auth redirect URLs.
-5. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from `.env.example` in the deployment environment.
+1. Create a Supabase project and apply every file in `supabase/migrations/` in filename order, including `202611130001_guestbook_public_read.sql`.
+2. Enable anonymous sign-ins and create a Cloudflare Turnstile widget for `caursty.dev` and `www.caursty.dev`.
+3. Put the Turnstile **secret key** only in Supabase Dashboard → Authentication → Bot and Abuse Protection → CAPTCHA. Enable CAPTCHA protection.
+4. Put the Turnstile **site key** in `VITE_TURNSTILE_SITE_KEY` and configure `VITE_SUPABASE_URL` plus `VITE_SUPABASE_PUBLISHABLE_KEY` from `.env.example`.
+5. Create the owner Auth user for `catursetyo26@gmail.com` before requesting a magic link.
+6. Add the deployed `/owner/login` URL to the allowed Auth redirect URLs.
+7. Apply the SQL migration before deploying the frontend that uses anonymous public reads.
 
-The publishable key is browser-safe. Never expose a secret key or service-role key in a `VITE_*` variable.
+The Supabase publishable key and Turnstile site key are browser-safe. Never expose a Turnstile secret, Supabase secret key, or service-role key in a `VITE_*` variable. Tokens expire and are reset after auth attempts.
+
+## Cloudflare Traffic Protection
+
+Create a WAF custom rule in Cloudflare Dashboard → Security → Security rules → Create rule → Custom rules:
+
+- Name: `Block non-search crawlers for caursty`.
+- Action: `Block`.
+- Expression:
+
+```text
+(http.host in {"caursty.dev" "www.caursty.dev"} and cf.client.bot and not(cf.verified_bot_category in {"Search Engine Crawler" "Page Preview"}))
+```
+
+This uses Cloudflare's verified-bot fields to allow search indexing and social previews while blocking other verified crawler categories. It does not match every unverified automated client. Enable the provider-managed automated-traffic or Bot Fight Mode protection under Security → Settings → Bot traffic when available, and review Security Events before adding stricter rules. Do not add a blanket `not cf.client.bot` block: normal human visitors are not verified bots.
 
 ## Safety
 
@@ -143,3 +163,6 @@ The publishable key is browser-safe. Never expose a secret key or service-role k
 - The message composer opens and closes from the CTA without losing typed input.
 - Keyboard and mobile use are comfortable.
 - Guestbook failure does not break Home.
+- Public reads do not call anonymous signup, including on a fresh browser profile.
+- Owner-verification failure leaves successfully loaded public messages visible in read-only mode.
+- Anonymous signup and owner magic-link requests require Turnstile tokens, while existing sessions can continue writing.

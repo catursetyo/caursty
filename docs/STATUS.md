@@ -1,8 +1,8 @@
 # Current Implementation Status
 
-Reviewed branch: `v2-redesign`
+Reviewed branch: `main`
 Reviewed state: current working tree
-Status date: 2026-07-13
+Status date: 2026-11-13
 
 This file describes what exists now. It is not a wish list.
 
@@ -35,6 +35,9 @@ This file describes what exists now. It is not a wish list.
 - Supabase guestbook migrations now provide immediately published shared messages, anonymous likes, and one-level owner replies when public Supabase credentials are configured.
 - Owner access uses a private `/owner/login` magic-link flow. Owner identity, replies, deletion controls, and the `liked by caur` marker are verified by database functions rather than visitor-submitted names.
 - Direct table access is revoked; browser writes use validated RPC functions and anonymous Supabase Auth identities for rate limiting and like deduplication.
+- Public guestbook reads use a narrowly granted `anon` RPC without creating anonymous Auth users and load only near the viewport.
+- Anonymous owner checks are skipped, and owner-verification failures degrade to read-only rather than hiding loaded messages.
+- Turnstile protects anonymous session creation and owner magic-link requests when the public site key and server-side secret are configured.
 - The full homepage foreground from hero through footer sways as one plane with cursor position on fine pointers only.
 - The fixed preloader has been removed.
 - Lenis skips reduced-motion users, supports hash links, and cancels its animation frame on cleanup.
@@ -52,7 +55,7 @@ This file describes what exists now. It is not a wish list.
 - React Router migration.
 - Project case-study routes and contribution details.
 - Final resume PDF or public URL.
-- Provisioning the Supabase project, applying the migration, and configuring the owner Auth account.
+- Applying the latest public-read migration and configuring Supabase Turnstile plus the Cloudflare crawler rule in production.
 - Final view-counter provider decision.
 - Social-preview artwork.
 
@@ -79,7 +82,7 @@ This file describes what exists now. It is not a wish list.
 ### Guestbook
 
 - No local `.env` is configured, so `localStorage` is available only during Vite development; production renders an unavailable state when Supabase is missing.
-- The Supabase migration has not been applied to a remote project from this repository session.
+- The new public-read migration, Turnstile keys, and Cloudflare crawler rule still need to be applied and verified against remote services; repository changes alone do not activate them.
 - CAPTCHA and provider-level Auth rate limits still need production configuration in Supabase.
 
 ## Next Work

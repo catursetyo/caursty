@@ -49,6 +49,8 @@ Rejected for V1 because Supabase Auth and database functions cover the required 
 - Core portfolio work remains higher priority.
 - `@supabase/supabase-js` is the frontend API and Auth client.
 - Server-controlled owner roles and like markers cannot be inferred from visitor input.
+- Public approved-message reads use a narrowly granted `anon` RPC and do not create anonymous Auth users.
+- Anonymous signup and owner magic-link requests require Cloudflare Turnstile tokens; only the public site key reaches the browser.
 - An admin dashboard is not required.
 
 ## Revisit When

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Heart, LogOut, MessageCircle, Send, Trash2 } from 'lucide-react';
 import {
   fetchGuestbook,
@@ -10,6 +10,7 @@ import {
   toggleRemoteLike,
 } from '../lib/guestbookApi';
 import { addMessage, initialMessages, toggleLike } from '../lib/guestbook';
+import TurnstileChallenge from '../components/ui/TurnstileChallenge';
 
 const STORAGE_KEY = 'caur_guestbook';
 const dateFormatter = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
@@ -17,6 +18,7 @@ const dateFormatter = new Intl.DateTimeFormat('en', { dateStyle: 'medium' });
 export default function Guestbook({ embedded = false }) {
   const remote = isSupabaseConfigured;
   const localPreview = !remote && import.meta.env.DEV;
+  const sectionRef = useRef(null);
   const [messages, setMessages] = useState(() => (localPreview ? readMessages() : []));
   const [form, setForm] = useState({ name: '', message: '' });
   const [replyTo, setReplyTo] = useState(null);
@@ -24,6 +26,10 @@ export default function Guestbook({ embedded = false }) {
   const [status, setStatus] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const [nearby, setNearby] = useState(() => !embedded || !('IntersectionObserver' in window));
   const [loading, setLoading] = useState(remote);
   const [unavailable, setUnavailable] = useState(!remote && !localPreview);
   const [busyId, setBusyId] = useState('');
@@ -35,15 +41,25 @@ export default function Guestbook({ embedded = false }) {
   }, [localPreview, messages]);
 
   useEffect(() => {
-    if (!remote) return undefined;
+    if (nearby) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      setNearby(true);
+      observer.disconnect();
+    }, { rootMargin: '400px' });
+
+    if (sectionRef.current) observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, [nearby]);
+
+  useEffect(() => {
+    if (!remote || !nearby) return undefined;
 
     let active = true;
     fetchGuestbook()
       .then((result) => {
         if (!active) return;
-        setMessages(result.messages);
-        setIsOwner(result.isOwner);
-        setUnavailable(false);
+        applyRemoteState(result);
       })
       .catch(() => {
         if (active) setUnavailable(true);
@@ -55,24 +71,39 @@ export default function Guestbook({ embedded = false }) {
     return () => {
       active = false;
     };
-  }, [remote]);
+  }, [remote, nearby]);
 
-  async function reloadRemote() {
-    const result = await fetchGuestbook();
+  function applyRemoteState(result) {
     setMessages(result.messages);
     setIsOwner(result.isOwner);
+    setHasSession(result.hasSession);
     setUnavailable(false);
+  }
+
+  async function reloadRemote() {
+    applyRemoteState(await fetchGuestbook());
+  }
+
+  function resetCaptcha() {
+    setCaptchaToken('');
+    setCaptchaReset((value) => value + 1);
   }
 
   async function handleMessageSubmit(event) {
     event.preventDefault();
+    if (remote && !hasSession && !captchaToken) {
+      setStatus('Complete the spam verification before sending a message.');
+      return;
+    }
+
     setBusyId('message');
     setStatus('');
 
     try {
       if (remote) {
-        await submitGuestbookMessage(form);
+        await submitGuestbookMessage(form, captchaToken);
         await reloadRemote();
+        resetCaptcha();
         setStatus('Message published.');
       } else {
         setMessages((items) => addMessage(items, form));
@@ -93,10 +124,17 @@ export default function Guestbook({ embedded = false }) {
       return;
     }
 
+    if (!hasSession && !captchaToken) {
+      setComposerOpen(true);
+      setStatus('Complete the spam verification in the message form, then try liking again.');
+      return;
+    }
+
     setBusyId(`like:${entryId}`);
     try {
-      await toggleRemoteLike(entryId);
+      await toggleRemoteLike(entryId, captchaToken);
       await reloadRemote();
+      resetCaptcha();
     } catch {
       setStatus('Like could not be updated. Please retry.');
     } finally {
@@ -150,7 +188,7 @@ export default function Guestbook({ embedded = false }) {
   }
 
   return (
-    <section className={embedded ? 'guestbook' : 'page-shell guestbook'}>
+    <section ref={sectionRef} className={embedded ? 'guestbook' : 'page-shell guestbook'}>
       <div className="guestbook-heading">
         {embedded
           ? <h2 className="guestbook-title">guestbook</h2>
@@ -249,7 +287,8 @@ export default function Guestbook({ embedded = false }) {
                 <span>Message</span>
                 <textarea value={form.message} maxLength="280" required onChange={(event) => setForm({ ...form, message: event.target.value })} />
               </label>
-              <button className="command-button" type="submit" disabled={busyId === 'message'}>
+              {remote && !hasSession && <TurnstileChallenge onVerify={setCaptchaToken} resetKey={captchaReset} />}
+              <button className="command-button" type="submit" disabled={busyId === 'message' || (remote && !hasSession && !captchaToken)}>
                 send message <Send aria-hidden="true" />
               </button>
             </form>
@@ -288,6 +327,7 @@ function formatDate(value) {
 }
 
 function getGuestbookError(error, fallback) {
+  if (error?.code === 'captcha_required') return 'Complete the spam verification before continuing.';
   if (error?.code === 'P0001') return 'Please wait before sending another message.';
   if (error?.code === '22023') return 'Please check the name and message length.';
   return fallback;
